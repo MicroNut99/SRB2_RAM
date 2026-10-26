@@ -15,12 +15,13 @@
 # stack, the CD32X BootCamp next to this folder (BOOTCAMP=<folder>, default ../CD32X-BootCamp) for the
 # launcher, python3 with Pillow, ffmpeg (the soundtrack), genisoimage (else tools/mkiso.py is used).
 #
-# Settings: NAME=<name> (the disc and launcher name, default SRB2_RAM_R2); OST=<folder>; SPLASH_TEXT=...
+# Settings: DISC=<name> (the disc and launcher name, default SRB2_RAM_R2; not NAME, which WSL sets to the
+# computer's name); OST=<folder>; SPLASH_TEXT=...
 # (the line under the loading bar); GENDEV=<devkit>; BOOTCAMP=<folder>; EDCD=0 (the disc only).
 set -e
 HERE="$(cd "$(dirname "$0")" && pwd)"
 trap 'echo; echo "*** BUILD FAILED at line $LINENO: $BASH_COMMAND"' ERR
-NAME="${NAME:-SRB2_RAM_R2}"
+NAME="${DISC:-SRB2_RAM_R2}"
 if [ -z "$GENDEV" ]; then   # the D32XR devkit where build.sh's own setup puts it, else the usual place
   if [ -x /opt/d32xr-dk/opt/toolchains/sega/sh-elf/bin/sh-elf-gcc ]; then GENDEV=/opt/d32xr-dk/opt/toolchains/sega
   else GENDEV=/opt/toolchains/sega; fi
