@@ -72,7 +72,8 @@ To build:
   `data/ost/` or `OST=<folder>`. Without it, the disc has no CD audio and all music is FM.
 - Optional: `data/splash.png`, a picture for the loading screen (320 x 224 or larger; it is scaled).
 - The D32XR team's devkit **`chillys-sega-devkit-20220418`** ([viciious/32XDK releases](https://github.com/viciious/32XDK/releases)),
-  for the game, at `/opt/d32xr-dk/opt/toolchains/sega` or `GENDEV=<folder>`.
+  for the game: `/opt/d32xr-dk/opt/toolchains/sega` if it is there, else `/opt/toolchains/sega`
+  (the same GCC 12.1 devkit), or `GENDEV=<folder>`.
 - **Chilly Willy's toolchain** in `/opt/toolchains/sega`, for the boot stack.
 - **[CD32X BootCamp](https://github.com/MicroNut99/CD32X-BootCamp)** next to this folder (or `BOOTCAMP=<folder>`),
   for the launcher (`edboot/`).
@@ -95,7 +96,7 @@ On Windows, from WSL, for example:
 
 ```
 cd /mnt/s/KoboPort/sega-toolchain-12.1/sega/SRB2_RAM
-bash build.sh 2>&1 | tee build_log.txt
+bash /mnt/s/KoboPort/sega-toolchain-12.1/sega/SRB2_RAM/build.sh 2>&1 | tee /mnt/s/KoboPort/sega-toolchain-12.1/sega/SRB2_RAM/build_edcd_log.txt
 ```
 
 It makes `discs/<name>/`:
@@ -109,7 +110,7 @@ All settings are environment variables, all optional:
 | `NAME=<name>` | `SRB2_RAM_R1` | The disc's and the launcher's name. Give every build you test its own. |
 | `OST=<folder>` | `data/ost` | The soundtrack's folder. If it is missing, there is no CD audio. |
 | `SPLASH_TEXT="..."` | `LOADING SONIC ROBO BLAST 2 INTO THE RAM CART` | The line under the loading bar. |
-| `GENDEV=<folder>` | `/opt/d32xr-dk/opt/toolchains/sega` | The D32XR devkit. |
+| `GENDEV=<folder>` | `/opt/d32xr-dk/opt/toolchains/sega`, else `/opt/toolchains/sega` | The D32XR devkit. |
 | `BOOTCAMP=<folder>` | `../CD32X-BootCamp` | The CD32X BootCamp, for the launcher. |
 | `EDCD=0` | `1` | The disc only, no launcher. |
 

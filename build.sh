@@ -10,8 +10,8 @@
 #   - optional: the Sonic Robo Blast 2 Official Soundtrack (v2.1, "NNN - Title.mp3") in data/ost/ or
 #     OST=<folder>: the CD audio (tools/cdtracks.txt says which songs); without it all music is FM
 #   - optional: data/splash.png, the picture of the loading screen
-# and: the D32XR team's devkit (viciious/32XDK 20220418) for the game (GENDEV, default
-# /opt/d32xr-dk/opt/toolchains/sega), Chilly Willy's toolchain in /opt/toolchains/sega for the boot
+# and: the D32XR team's devkit (viciious/32XDK 20220418, GCC 12.1) for the game (GENDEV, default
+# /opt/d32xr-dk/opt/toolchains/sega if there, else /opt/toolchains/sega), Chilly Willy's toolchain in /opt/toolchains/sega for the boot
 # stack, the CD32X BootCamp next to this folder (BOOTCAMP=<folder>, default ../CD32X-BootCamp) for the
 # launcher, python3 with Pillow, ffmpeg (the soundtrack), genisoimage (else tools/mkiso.py is used).
 #
@@ -21,7 +21,10 @@ set -e
 HERE="$(cd "$(dirname "$0")" && pwd)"
 trap 'echo; echo "*** BUILD FAILED at line $LINENO: $BASH_COMMAND"' ERR
 NAME="${NAME:-SRB2_RAM_R1}"
-GENDEV="${GENDEV:-/opt/d32xr-dk/opt/toolchains/sega}"
+if [ -z "$GENDEV" ]; then   # the D32XR devkit where build.sh's own setup puts it, else the usual place
+  if [ -x /opt/d32xr-dk/opt/toolchains/sega/sh-elf/bin/sh-elf-gcc ]; then GENDEV=/opt/d32xr-dk/opt/toolchains/sega
+  else GENDEV=/opt/toolchains/sega; fi
+fi
 DATA="$HERE/data"
 B="$HERE/build"
 ROMS="$HERE/cd32x/subcpu/ROMS"
