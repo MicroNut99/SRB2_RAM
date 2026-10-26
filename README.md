@@ -1,4 +1,4 @@
-# SRB2 RAM: Sonic Robo Blast 32X from the CD, on the Mega EverDrive PRO
+# SRB2 RAM (tech demo): Sonic Robo Blast 32X from the CD, on the Mega EverDrive PRO
 
 **Sonic Robo Blast 32X** on a **Genesis + Sega CD + 32X**, started from a **Mega EverDrive PRO**, with the
 **Sonic Robo Blast 2 Official Soundtrack** playing as CD audio.
@@ -8,12 +8,16 @@
 3. Sonic Robo Blast 32X then runs from the EverDrive as from its own cartridge. The zone music, the boss,
    the title, the special stages and the jingles come off the disc as CD audio.
 
-This is an example, made for the Sonic Robo Blast 32X developers to look at: one way the game could use a
-Sega CD next to a 32X. It is a fan project with no connection to Sonic Team Jr., the SRB32X team or Sega.
+> **A tech demo only.** It shows one way Sonic Robo Blast 32X could use a Sega CD next to a 32X, made for
+> the SRB32X developers to look at. It runs on official Mega EverDrive PRO cartridges (by krikzz) and
+> holds no other value: it is not a release, a new version or a replacement for the game. It is a fan
+> project with no connection to Sonic Team Jr., the SRB32X team or Sega.
 
 ## What it is, and what it isn't
 
 **It is:**
+- A tech demo, tested on the console (Genesis + Sega CD + 32X with an official Mega EverDrive PRO) and in
+  ares. (ares shows the game's "this emulator exhibits graphical glitches" notice first; press Start.)
 - Sonic Robo Blast 32X's own engine and data, unchanged in what it does: the same levels, the same physics,
   the same FM music and sound effects where no CD track is used.
 - A "RAM game": the CD carries the game, the EverDrive holds it while it runs. Nothing is flashed or kept;
@@ -31,10 +35,8 @@ Sega CD next to a 32X. It is a fan project with no connection to Sonic Team Jr.,
 - A disc with the game's data on it. You build the disc from your own files (`data/`, never committed).
 - Something for a plain cartridge or for an emulator without the EverDrive. The launcher talks to the
   EverDrive's own registers.
-- Tested on the console yet. So far it was run in ares with the Mega EverDrive PRO emulated: the launcher,
-  the loading screen, the title, the menus and Greenflower Act 1 with the CD audio, and the options saved to
-  the EverDrive's battery RAM and read back at the next start. (ares shows the game's "this emulator exhibits
-  graphical glitches" notice first; press Start.)
+- Something for clone EverDrives or other flash carts. It is made for, and runs on, the official Mega
+  EverDrive PRO.
 
 ## The CD audio
 
