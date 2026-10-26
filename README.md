@@ -31,6 +31,10 @@ Sega CD next to a 32X. It is a fan project with no connection to Sonic Team Jr.,
 - A disc with the game's data on it. You build the disc from your own files (`data/`, never committed).
 - Something for a plain cartridge or for an emulator without the EverDrive. The launcher talks to the
   EverDrive's own registers.
+- Tested on the console yet. So far it was run in ares with the Mega EverDrive PRO emulated: the launcher,
+  the loading screen, the title, the menus and Greenflower Act 1 with the CD audio, and the options saved to
+  the EverDrive's battery RAM and read back at the next start. (ares shows the game's "this emulator exhibits
+  graphical glitches" notice first; press Start.)
 
 ## The CD audio
 
