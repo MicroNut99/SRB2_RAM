@@ -1,0 +1,246 @@
+/* f_main.c -- finale */
+
+#include "r_local.h"
+#include "v_font.h"
+
+typedef struct
+{
+	const char *piclumpName;
+	const char *title;
+	const char *name;
+	const char *didWhat;
+	const char *links;
+} creditcard_t; // tap, chip, or swipe?
+
+creditcard_t creditCards[] = {
+	{"C_STJR",   "SONIC ROBO BLAST",     "32X",              "STAFF", "" },
+	{NULL, "TRACKING",                NULL,         "Cryptik\n\nWessquiid\n\nNerreave\n\nNotQuiteHere\n\nJoy Tay\n\nJustKam\n\nMattM4nia", "" },
+	{"C_SAXMAN", "PROGRAMMING",          "Saxman",           "MegaDrive & 32X\nAssembly\nAdditional programming\nTools", "rumble.com/user\n/ymtx81z" },
+	{"C_SSN",    "PROGRAMMING",          "SSNTails",         "Project Lead\nGameplay\nEngine Enhancements\nAdditional Art",            "x.com/@SSNTails\nyoutube.com\n/@ssntails" },
+	{"C_VIC",    "SPECIAL THANKS",       "Viciious",         "Doom 32X:\nResurrection\nDoom CD32X:\nFusion",             "x.com/vluchitz" },
+	{"C_THANKS", "SPECIAL THANKS",       NULL,          "Mittens\n\nChilly Willy\n\nTmEE\n\nJames Groth",                     "" },
+	{"C_STJR",   "BASED ON THE WORK BY", "Sonic Team Jr.",   "www.srb2.org",                        "Shout-outs to:\nAlice Alacroix\nMotor Roach\nNev3r\nGuyWithThePie\nToaster\nAnd so many more!" },
+	{NULL,       "", "", "", "" },
+	{NULL, NULL, NULL, NULL, NULL },
+};
+
+#define CARDTIME (8*TICRATE)
+
+static VINT cardPFP = 0;
+static VINT cardTimer = 0;
+static VINT curCard = 0;
+
+static VINT trackerCards[7];
+
+static VINT chaosLumps[6];
+
+static void F_DrawBackground(void)
+{
+	// Black background like Sonic 1 & 2
+	DrawFillRect(0, 0, 320, 224, 31);
+}
+
+/*============================================================================ */
+
+/*
+=======================
+=
+= F_Start
+=
+=======================
+*/
+
+static boolean F_NextCard()
+{
+	curCard++;
+
+	if (!creditCards[curCard].title)
+	{
+		// We are done
+		F_Stop();
+		return false;
+	}
+
+	cardTimer = CARDTIME;
+	if (creditCards[curCard].piclumpName)
+		cardPFP = W_GetNumForName(creditCards[curCard].piclumpName);
+	else
+		cardPFP = 0;
+
+	return true;
+}
+
+void F_Start (void)
+{
+	h40_sky = 1;	// Get rid of the three-pixel shift.
+	RemoveDistortionFilters();
+	UpdateBuffer();
+	RemoveDistortionFilters();
+	UpdateBuffer();
+
+	trackerCards[0] = W_GetNumForName("C_TRACK1");
+	trackerCards[1] = W_GetNumForName("C_TRACK2");
+	trackerCards[2] = W_GetNumForName("C_TRACK3");
+	trackerCards[3] = W_GetNumForName("C_TRACK4");
+	trackerCards[4] = W_GetNumForName("C_TRACK5");
+	trackerCards[5] = W_GetNumForName("C_TRACK6");
+	trackerCards[6] = W_GetNumForName("C_TRACK7");
+
+	chaosLumps[0] = W_GetNumForName("CHAOS1");
+	chaosLumps[1] = W_GetNumForName("CHAOS2");
+	chaosLumps[2] = W_GetNumForName("CHAOS3");
+	chaosLumps[3] = W_GetNumForName("CHAOS4");
+	chaosLumps[4] = W_GetNumForName("CHAOS5");
+	chaosLumps[5] = W_GetNumForName("CHAOS6");
+
+	S_StartSong(gameinfo.victoryMus, 1, cdtrack_end);
+
+	// Set this to black, prep for fade-in.
+	R_FadePalette(dc_playpals, (PALETTE_SHIFT_CONVENTIONAL_FADE_TO_WHITE + 4), dc_cshift_playpals);
+
+	R_InitColormap();
+
+	curCard = -1;
+	F_NextCard();
+
+	clearedGame = true;
+}
+
+void F_Stop (void)
+{
+	I_SetPalette(dc_playpals);
+
+	R_InitColormap();
+	
+	// Cleanup
+}
+
+/*
+=======================
+=
+= F_Ticker
+=
+=======================
+*/
+
+int F_Ticker (void)
+{
+	cardTimer--;
+
+	if (cardTimer < 0)
+	{
+		if (!F_NextCard())
+			return 1;
+	}
+
+	if (cardTimer >= CARDTIME - 12)
+	{
+		int palIndex = cardTimer - (CARDTIME - 12);
+		palIndex /= 3;
+		if (palIndex > 4)
+			palIndex = 4;
+
+		palIndex += 6;
+		R_FadePalette(dc_playpals, palIndex, dc_cshift_playpals);
+	}
+	else if (cardTimer < 12)
+	{
+		int palIndex = 10 - (cardTimer / 3);
+		R_FadePalette(dc_playpals, palIndex, dc_cshift_playpals);
+	}
+	else
+		I_SetPalette(dc_playpals);
+
+	return 0;
+}
+
+/*
+=======================
+=
+= F_Drawer
+=
+=======================
+*/
+extern boolean unlockcez;
+
+void F_Drawer (void)
+{
+	// HACK
+	viewportWidth = 320;
+	viewportHeight = I_FrameBufferHeight();
+	viewportbuffer = (pixel_t*)I_FrameBuffer();
+
+	F_DrawBackground();
+
+	const creditcard_t *card = &creditCards[curCard];
+
+	if (curCard == 0)
+	{
+		V_DrawStringCenter(&creditFont, 160, 112-8-24, card->title); // SONIC ROBO BLAST
+		V_DrawStringCenter(&creditFont, 160, 112-8, card->name); // 32X
+		V_DrawStringCenter(&creditFont, 160, 112-8+16+8, card->didWhat); // STAFF
+	}
+	else if (curCard == 1)
+	{
+		V_DrawStringCenter(&creditFont, 160, 32, card->title);
+
+		DrawJagobjLump(trackerCards[0], 24, 64, NULL, NULL);
+		DrawJagobjLump(trackerCards[1], 24+48, 64, NULL, NULL);
+		DrawJagobjLump(trackerCards[2], 24+48+48, 64, NULL, NULL);
+		DrawJagobjLump(trackerCards[3], 24, 64+48, NULL, NULL);
+		DrawJagobjLump(trackerCards[4], 24+48, 64+48, NULL, NULL);
+		DrawJagobjLump(trackerCards[5], 24+48+48, 64+48, NULL, NULL);
+		DrawJagobjLump(trackerCards[6], 24+48, 64+48+48, NULL, NULL);
+
+		V_DrawStringLeft(&menuFont, 160+8, 64, card->didWhat);
+	}
+	else
+	{
+		V_DrawStringCenter(&creditFont, 160, cardPFP ? 32 : 112-8, card->title);
+
+		if (cardPFP)
+			DrawJagobjLump(cardPFP, 32, 64, NULL, NULL);
+		else
+		{
+			uint8_t emerald_bits = emeralds;
+
+			if (emeralds == 63) {
+				V_DrawStringCenter(&creditFont, 160, 32, "GOT THEM ALL");
+				unlockcez = true;
+			}
+			else {
+				V_DrawStringCenter(&creditFont, 160, 32, "TRY AGAIN");
+			}
+
+			for (int i=0; i < 6; i++) {
+				if (emerald_bits & 1) {
+					// Make the emerald flash.
+					if (cardTimer & 1) {
+						DrawJagobjLumpWithColormap(chaosLumps[i], 68 + (i<<5), 72, 0, 0, HWLIGHT(192));
+					}
+					else {
+						DrawJagobjLump(chaosLumps[i], 68 + (i<<5), 72, 0, 0);
+					}
+				}
+				else {
+					// Dim the emerald.
+					DrawJagobjLumpWithColormap(chaosLumps[i], 68 + (i<<5), 72, 0, 0, HWLIGHT(64));
+				}
+				emerald_bits >>= 1;
+			}
+			V_DrawStringCenterWithColormap(&menuFont, 160, 124, "THANKS FOR PLAYING!", YELLOWTEXTCOLORMAP);
+			V_DrawStringCenterWithColormap(&menuFont, 160, 142, "Stay tuned for the full version!", YELLOWTEXTCOLORMAP);
+			V_DrawStringCenter(&menuFont, 160, 160, "youtube.com/@ssntails");
+		}
+
+		if (card->name)
+			V_DrawStringCenter(&menuFont, 80, 64+100, card->name);
+
+		if (card->didWhat)
+			V_DrawStringLeft(&menuFont, 160-16, 64, card->didWhat);
+
+		if (card->links)
+			V_DrawStringLeft(&menuFont, 160-16, 112, card->links);
+	}
+}
+

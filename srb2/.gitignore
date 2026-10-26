@@ -1,0 +1,17 @@
+*.32x
+*.bin
+*.elf
+*.map
+*.o
+*.wad
+*.zip
+*.md
+*.xdelta
+.github
+.vscode
+*.o80
+*.lst
+*.bat
+*.ram
+
+!extras/megasave/D32XR.32X

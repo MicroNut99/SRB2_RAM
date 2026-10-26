@@ -1,0 +1,26 @@
+# game data, soundtrack and pictures you supply (never committed)
+data/
+*.wad
+*.WAD
+*.32x
+*.32X
+*.mp3
+*.wav
+# build output
+build/
+discs/
+*.o
+*.o80
+*.elf
+*.bin
+*.iso
+*.cue
+*.map
+*.lst
+*.log
+cd32x/subcpu/cd/
+cd32x/subcpu/ROMS/
+cd32x/sh2/preload.h
+cd32x/subcpu/preload_names.h
+build_*.txt
+__pycache__/

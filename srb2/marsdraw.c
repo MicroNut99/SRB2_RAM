@@ -1,0 +1,1449 @@
+/*
+  Victor Luchits
+
+  The MIT License (MIT)
+
+  Copyright (c) 2021 Victor Luchits, Derek John Evans, id Software and ZeniMax Media
+
+  Permission is hereby granted, free of charge, to any person obtaining a copy
+  of this software and associated documentation files (the "Software"), to deal
+  in the Software without restriction, including without limitation the rights
+  to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+  copies of the Software, and to permit persons to whom the Software is
+  furnished to do so, subject to the following conditions:
+
+  The above copyright notice and this permission notice shall be included in all
+  copies or substantial portions of the Software.
+
+  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+  IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+  FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+  AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+  SOFTWARE.
+*/
+
+#include "32x.h"
+#include "doomdef.h"
+#include "mars.h"
+#include "r_local.h"
+#include "lz.h"
+
+/*
+==============================================================================
+
+						TEXTURE MAPPING CODE
+
+==============================================================================
+*/
+
+#ifdef USE_C_DRAW
+
+void I_DrawColumnLowC(int dc_x, int dc_yl, int dc_yh, int light, fixed_t frac_,
+	fixed_t fracstep, inpixel_t* dc_source, int dc_texheight) ATTR_DATA_CACHE_ALIGN;
+void I_DrawColumnNPo2LowC(int dc_x, int dc_yl, int dc_yh, int light, fixed_t frac_,
+	fixed_t fracstep, inpixel_t* dc_source, int dc_texheight) ATTR_DATA_CACHE_ALIGN;
+void I_DrawSpanLowC(int ds_y, int ds_x1, int ds_x2, int light, fixed_t ds_xfrac,
+	fixed_t ds_yfrac, fixed_t ds_xstep, fixed_t ds_ystep, inpixel_t* ds_source, int dc_texheight) ATTR_DATA_CACHE_ALIGN;
+
+void I_DrawColumnC(int dc_x, int dc_yl, int dc_yh, int light, fixed_t frac_,
+	fixed_t fracstep, inpixel_t* dc_source, int dc_texheight) ATTR_DATA_CACHE_ALIGN;
+void I_DrawColumnNPo2C(int dc_x, int dc_yl, int dc_yh, int light, fixed_t frac_,
+	fixed_t fracstep, inpixel_t* dc_source, int dc_texheight) ATTR_DATA_CACHE_ALIGN;
+
+/*
+==================
+=
+= I_DrawColumn
+=
+= Source is the top of the column to scale
+=
+==================
+*/
+
+void I_DrawColumnLowC(int dc_x, int dc_yl, int dc_yh, int light, fixed_t frac_,
+	fixed_t fracstep, inpixel_t* dc_source, int dc_texheight)
+{
+	unsigned	heightmask;
+	pixel_t* dest;
+	int16_t* dc_colormap;
+	unsigned	frac;
+	unsigned    count, n;
+	int deststep;
+
+#ifdef RANGECHECK
+	if (dc_x >= viewportWidth || dc_yl < 0 || dc_yh >= viewportHeight)
+		I_Error("R_DrawColumn: %i to %i at %i", dc_yl, dc_yh, dc_x);
+#endif
+
+	if (dc_yl > dc_yh)
+		return;
+
+	frac = frac_;
+	heightmask = dc_texheight - 1;
+	dest = viewportbuffer + dc_yl * 320 / 2 + dc_x;
+	dc_colormap = (int16_t *)dc_colormaps + light;
+	__asm volatile("mov %1,%0\n\t" : "=&r" (deststep) : "r"(320/2));
+
+#define DO_PIXEL() do { \
+		*dest = dc_colormap[dc_source[(frac >> FRACBITS) & heightmask]]; \
+		dest += deststep; \
+		frac += fracstep; \
+	} while (0)
+
+	count = dc_yh - dc_yl + 1;
+	n = (count + 7) >> 3;
+
+	switch (count & 7)
+	{
+	case 0: do { DO_PIXEL();
+	case 7:      DO_PIXEL();
+	case 6:      DO_PIXEL();
+	case 5:      DO_PIXEL();
+	case 4:      DO_PIXEL();
+	case 3:      DO_PIXEL();
+	case 2:      DO_PIXEL();
+	case 1:      DO_PIXEL();
+	} while (--n > 0);
+	}
+
+#undef DO_PIXEL
+}
+
+//
+// CALICO: the Jag blitter could wrap around textures of arbitrary height, so
+// we need to do the "tutti frutti" fix here. Carmack didn't bother fixing
+// this for the NeXT "simulator" build of the game.
+//
+void I_DrawColumnNPo2LowC(int dc_x, int dc_yl, int dc_yh, int light, fixed_t frac_,
+	fixed_t fracstep, inpixel_t* dc_source, int dc_texheight)
+{
+	unsigned	heightmask;
+	pixel_t* dest;
+	int16_t* dc_colormap;
+	unsigned    count, n;
+	unsigned 	frac;
+	int deststep;
+
+#ifdef RANGECHECK
+	if (dc_x >= viewportWidth || dc_yl < 0 || dc_yh >= viewportHeight)
+		I_Error("R_DrawColumn: %i to %i at %i", dc_yl, dc_yh, dc_x);
+#endif
+
+	if (dc_yl > dc_yh)
+		return;
+
+	heightmask = dc_texheight << FRACBITS;
+	if (frac_ < 0)
+		while ((frac_ += heightmask) < 0);
+	else
+	{
+		while ((unsigned)frac_ >= heightmask)
+			frac_ -= heightmask;
+	}
+	frac = frac_;
+
+	dest = viewportbuffer + dc_yl * 320 / 2 + dc_x;
+	dc_colormap = (int16_t *)dc_colormaps + light;
+	__asm volatile("mov %1,%0\n\t" : "=&r" (deststep) : "r"(320/2));
+
+	count = dc_yh - dc_yl + 1;
+	n = (count + 7) >> 3;
+
+#define DO_PIXEL() do { \
+		*dest = dc_colormap[dc_source[frac >> FRACBITS]]; \
+		dest += deststep; \
+		if ((frac += fracstep) >= heightmask) \
+			frac -= heightmask; \
+	} while (0)
+
+	switch (count & 7)
+	{
+	case 0: do { DO_PIXEL();
+	case 7:      DO_PIXEL();
+	case 6:      DO_PIXEL();
+	case 5:      DO_PIXEL();
+	case 4:      DO_PIXEL();
+	case 3:      DO_PIXEL();
+	case 2:      DO_PIXEL();
+	case 1:      DO_PIXEL();
+	} while (--n > 0);
+	}
+
+#undef DO_PIXEL
+}
+
+/*
+================
+=
+= I_DrawSpan
+=
+================
+*/
+void I_DrawSpanLowC(int ds_y, int ds_x1, int ds_x2, int light, fixed_t ds_xfrac,
+	fixed_t ds_yfrac, fixed_t ds_xstep, fixed_t ds_ystep, inpixel_t* ds_source, int dc_texheight)
+{
+	unsigned xfrac, yfrac;
+	pixel_t* dest;
+	int		spot;
+	unsigned count, n;
+	int16_t* dc_colormap;
+	unsigned xmask, ymask;
+
+#ifdef RANGECHECK
+	if (ds_x2 < ds_x1 || ds_x1<0 || ds_x2 >= viewportWidth || ds_y>viewportHeight)
+		I_Error("R_DrawSpan: %i to %i at %i", ds_x1, ds_x2, ds_y);
+#endif 
+
+	count = ds_x2 - ds_x1 + 1;
+	xfrac = ds_xfrac, yfrac = ds_yfrac;
+
+	xmask = dc_texheight - 1;
+	ymask = (dc_texheight-1)*dc_texheight;
+
+	dest = viewportbuffer + ds_y * 320 / 2 + ds_x1;
+	dc_colormap = (int16_t *)dc_colormaps + light;
+
+#define DO_PIXEL() do { \
+		spot = ((yfrac >> 16) & ymask) + ((xfrac >> 16) & xmask); \
+		*dest++ = dc_colormap[ds_source[spot]]; \
+		xfrac += ds_xstep, yfrac += ds_ystep; \
+	} while(0)
+
+	n = (count + 7) >> 3;
+	switch (count & 7)
+	{
+	case 0: do { DO_PIXEL();
+	case 7:      DO_PIXEL();
+	case 6:      DO_PIXEL();
+	case 5:      DO_PIXEL();
+	case 4:      DO_PIXEL();
+	case 3:      DO_PIXEL();
+	case 2:      DO_PIXEL();
+	case 1:      DO_PIXEL();
+	} while (--n > 0);
+	}
+
+#undef DO_PIXEL
+}
+
+void I_DrawColumnC(int dc_x, int dc_yl, int dc_yh, int light, fixed_t frac_,
+	fixed_t fracstep, inpixel_t* dc_source, int dc_texheight)
+{
+	unsigned	heightmask;
+	int8_t *dest;
+	int8_t *dc_colormap;
+	unsigned	frac;
+	unsigned    count, n;
+	int deststep;
+
+#ifdef RANGECHECK
+	if (dc_x >= viewportWidth || dc_yl < 0 || dc_yh >= viewportHeight)
+		I_Error("R_DrawColumn: %i to %i at %i", dc_yl, dc_yh, dc_x);
+#endif
+
+	if (dc_yl > dc_yh)
+		return;
+
+	frac = frac_;
+	heightmask = dc_texheight - 1;
+	dest = (int8_t *)viewportbuffer + dc_yl * 320 + dc_x;
+	dc_colormap = (int8_t *)(dc_colormaps + light);
+	__asm volatile("mov %1,%0\n\t" : "=&r" (deststep) : "r"(320));
+
+#define DO_PIXEL() do { \
+		*dest = dc_colormap[(int8_t)dc_source[(frac >> FRACBITS) & heightmask]] & 0xff; \
+		dest += deststep; \
+		frac += fracstep; \
+	} while (0)
+
+	count = dc_yh - dc_yl + 1;
+	n = (count + 7) >> 3;
+
+	switch (count & 7)
+	{
+	case 0: do { DO_PIXEL();
+	case 7:      DO_PIXEL();
+	case 6:      DO_PIXEL();
+	case 5:      DO_PIXEL();
+	case 4:      DO_PIXEL();
+	case 3:      DO_PIXEL();
+	case 2:      DO_PIXEL();
+	case 1:      DO_PIXEL();
+	} while (--n > 0);
+	}
+
+#undef DO_PIXEL
+}
+
+void I_DrawColumnNPo2C(int dc_x, int dc_yl, int dc_yh, int light, fixed_t frac_,
+	fixed_t fracstep, inpixel_t* dc_source, int dc_texheight)
+{
+	unsigned	heightmask;
+	int8_t *dest;
+	int8_t *dc_colormap;
+	unsigned    count, n;
+	unsigned 	frac;
+	int deststep;
+
+#ifdef RANGECHECK
+	if (dc_x >= viewportWidth || dc_yl < 0 || dc_yh >= viewportHeight)
+		I_Error("R_DrawColumn: %i to %i at %i", dc_yl, dc_yh, dc_x);
+#endif
+
+	if (dc_yl > dc_yh)
+		return;
+
+	heightmask = dc_texheight << FRACBITS;
+	if (frac_ < 0)
+		while ((frac_ += heightmask) < 0);
+	else
+	{
+		while ((unsigned)frac_ >= heightmask)
+			frac_ -= heightmask;
+	}
+	frac = frac_;
+
+	dest = (int8_t *)viewportbuffer + dc_yl * 320 + dc_x;
+	dc_colormap = (int8_t *)(dc_colormaps + light);
+	__asm volatile("mov %1,%0\n\t" : "=&r" (deststep) : "r"(320));
+
+	count = dc_yh - dc_yl + 1;
+	n = (count + 7) >> 3;
+
+#define DO_PIXEL() do { \
+		*dest = dc_colormap[(int8_t)dc_source[frac >> FRACBITS]] & 0xff; \
+		dest += deststep; \
+		if ((frac += fracstep) >= heightmask) \
+			frac -= heightmask; \
+	} while (0)
+
+	switch (count & 7)
+	{
+	case 0: do { DO_PIXEL();
+	case 7:      DO_PIXEL();
+	case 6:      DO_PIXEL();
+	case 5:      DO_PIXEL();
+	case 4:      DO_PIXEL();
+	case 3:      DO_PIXEL();
+	case 2:      DO_PIXEL();
+	case 1:      DO_PIXEL();
+	} while (--n > 0);
+	}
+
+#undef DO_PIXEL
+}
+
+#endif
+
+#ifdef POTATO_MODE
+/*
+================
+=
+= I_DrawSpanPotatoLow
+=
+================
+*/
+void I_DrawSpanPotatoLow(int ds_y, int ds_x1, int ds_x2, int light, fixed_t ds_xfrac,
+	fixed_t ds_yfrac, fixed_t ds_xstep, fixed_t ds_ystep, inpixel_t* ds_source, int dc_texheight)
+{
+	pixel_t* dest, pix;
+	unsigned count;
+	short* dc_colormap;
+
+#ifdef RANGECHECK
+	if (ds_x2 < ds_x1 || ds_x1<0 || ds_x2 >= viewportWidth || ds_y>viewportHeight)
+		I_Error("R_DrawSpan: %i to %i at %i", ds_x1, ds_x2, ds_y);
+#endif
+
+	if (ds_x2 < ds_x1)
+		return;
+
+	count = ds_x2 - ds_x1 + 1;
+
+	dest = viewportbuffer + ds_y * 320 / 2 + ds_x1;
+	dc_colormap = (int16_t *)dc_colormaps + light;
+	pix = dc_colormap[(int8_t)ds_source[513]];
+
+	do {
+		*dest++ = pix;
+	} while (--count > 0);
+}
+#endif
+
+void I_DrawColumnNoDraw(int dc_x, int dc_yl, int dc_yh, int light, fixed_t frac_,
+	fixed_t fracstep, inpixel_t* dc_source, int dc_texheight)
+{
+
+}
+
+void I_DrawSpanNoDraw(int ds_y, int ds_x1, int ds_x2, int light, fixed_t ds_xfrac,
+	fixed_t ds_yfrac, fixed_t ds_xstep, fixed_t ds_ystep, inpixel_t* ds_source, int dc_texheight)
+{
+
+}
+
+void I_DrawSpanColorNoDraw(int ds_y, int ds_x1, int ds_x2, int color_index)
+{
+
+}
+
+void I_DrawSkyColumnNoDraw(int dc_x, int dc_yl, int dc_yh)
+{
+
+}
+
+/*
+=============
+=
+= DrawJagobjLump
+=
+=============
+*/
+
+void GetJagobjSize(int lumpnum, int* ow, int *oh)
+{
+	LZSTATE gfx_lz;
+
+	uint8_t lz_buf[LZ_BUF_SIZE];
+
+	byte* lump;
+	jagobj_t* jo;
+
+	if (lumpnum < 0)
+		return;
+
+	lump = W_POINTLUMPNUM(lumpnum);
+	if (!(lumpinfo[lumpnum].name[0] & 0x80))
+	{
+		// uncompressed
+		jo = (jagobj_t*)lump;
+	}
+	else // decompress
+	{
+
+		LzSetup(&gfx_lz, lump, lz_buf, LZ_BUF_SIZE);
+		if (LzReadPartial(&gfx_lz, 16) != 16)
+			return;
+
+		jo = (jagobj_t*)gfx_lz.output;
+	}
+
+	if (ow) *ow = BIGSHORT(jo->width);
+	if (oh) *oh = BIGSHORT(jo->height);
+}
+
+void DrawJagobjLump(int lumpnum, int x, int y, int* ow, int* oh)
+{
+	LZSTATE gfx_lz;
+	uint8_t lz_buf[LZ_BUF_SIZE];
+	byte* lump;
+	jagobj_t* jo;
+	int width, height;
+
+	if (lumpnum < 0 || y < 0) // Drawing above the top of the screen is not supported.
+		return;
+
+	lump = W_POINTLUMPNUM(lumpnum);
+	if (!(lumpinfo[lumpnum].name[0] & 0x80))
+	{
+		// uncompressed
+		jo = (jagobj_t*)lump;
+		if (ow) *ow = BIGSHORT(jo->width);
+		if (oh) *oh = BIGSHORT(jo->height);
+		DrawJagobj((void*)lump, x, y);
+		return;
+	}
+
+	LzSetup(&gfx_lz, lump, lz_buf, LZ_BUF_SIZE);
+	if (LzReadPartial(&gfx_lz, 16) != 16)
+		return;
+
+	jo = (jagobj_t*)gfx_lz.output;
+	width = BIGSHORT(jo->width);
+	height = BIGSHORT(jo->height);
+
+	if (ow) *ow = width;
+	if (oh) *oh = height;
+
+	if (x + width > 320)
+		width = 320 - x;
+	if (y + height > mars_framebuffer_height)
+		height = mars_framebuffer_height - y;
+
+	if (width < 1 || height < 1)
+		return;
+	{
+		byte* dest;
+		byte* source;
+		byte* fb;
+		pixel_t* ob;
+		unsigned p;
+
+		source = gfx_lz.output;
+		p = 16;
+
+		fb = (byte*)I_FrameBuffer();
+		ob = I_OverwriteBuffer();
+
+		dest = fb + y * 320 + x;
+		for (; height; height--)
+		{
+			int i;
+
+			LzReadPartial(&gfx_lz, width);
+
+			i = 0;
+			if (p + width > LZ_BUF_SIZE) {
+				int rem = LZ_BUF_SIZE - p;
+				for (; i < rem; i++)
+					dest[i] = source[p++];
+				p = 0;
+			}
+
+			if ((i & 1) == 0 && (width & 1) == 0 && (p & 1) == 0 && (x & 1) == 0)
+			{
+				int j = i;
+				pixel_t* dest2 = ob + ((dest - fb + i) >> 1);
+				pixel_t* source2 = (pixel_t*)&source[p];
+				for (; i < width; i += 2)
+					*dest2++ = *source2++;
+				p += width - j;
+			}
+			else
+			{
+				for (; i < width; i++)
+					dest[i] = source[p++];
+			}
+
+			dest += 320;
+		}
+	}
+}
+
+// NOTE: Using a colormap is slower because it must
+// draw only one byte at a time, not two.
+void DrawJagobjWithColormap(jagobj_t* jo, int x, int y, 
+	int src_x, int src_y, int src_w, int src_h, pixel_t *fb, int colormap)
+{
+	int16_t *dc_colormap = (int16_t*)dc_colormaps + colormap;
+	int		srcx, srcy;
+	int		width, height, depth, flags, index;
+	int		rowsize, inc;
+	byte	*dest, *source;
+
+	rowsize = BIGSHORT(jo->width);
+	width = BIGSHORT(jo->width);
+	height = BIGSHORT(jo->height);
+	depth = BIGSHORT(jo->depth);
+	flags = BIGSHORT(jo->flags);
+	index = BIGSHORT(jo->index);
+
+	if (src_w > 0)
+		width = src_w;
+	else if (src_w < 0)
+		width += src_w;
+
+	if (src_h > 0)
+		height = src_h;
+	else if (src_h < 0)
+		height += src_h;
+
+	srcx = 0;
+	srcy = 0;
+
+	if (x < 0)
+	{
+		width += x;
+		srcx = -x;
+		x = 0;
+	}
+	srcx += src_x;
+
+	if (y < 0)
+	{
+		srcy = -y;
+		height += y;
+		y = 0;
+	}
+	srcy += src_y;
+
+	if (x + width > 320)
+		width = 320 - x;
+	if (y + height > mars_framebuffer_height)
+		height = mars_framebuffer_height - y;
+	inc = rowsize - width;
+
+	if (width < 1 || height < 1)
+		return;
+
+	if (depth == 2)
+	{
+		inc >>= 1;
+		srcx >>= 1;
+		rowsize >>= 1;
+		index = (index << 1) + (flags & 2 ? 1 : 0);
+	}
+
+	dest = (byte*)fb + y * 320 + x;
+	source = jo->data + srcx + srcy * rowsize;
+
+	if (depth == 2)
+	{
+		for (; height; height--)
+		{
+			int n = (width + 3) >> 2;
+			switch (width & 3)
+			{
+			case 0: do { *dest++ = dc_colormap[index + (((*source >> 4) & 0xF) << 1)];
+			case 3:      *dest++ = dc_colormap[index + (((*source >> 0) & 0xF) << 1)], source++;
+			case 2:      *dest++ = dc_colormap[index + (((*source >> 4) & 0xF) << 1)];
+			case 1:      *dest++ = dc_colormap[index + (((*source >> 0) & 0xF) << 1)], source++;
+			} while (--n > 0);
+			}
+			source += inc;
+			dest += 320 - width;
+		}
+		return;
+	}
+
+	for (; height; height--)
+	{
+		int n = (width + 3) >> 2;
+		switch (width & 3)
+		{
+		case 0: do { *dest++ = dc_colormap[*source++];
+		case 3:      *dest++ = dc_colormap[*source++];
+		case 2:      *dest++ = dc_colormap[*source++];
+		case 1:      *dest++ = dc_colormap[*source++];
+		} while (--n > 0);
+		}
+		source += rowsize - width;
+		dest += 320 - width;
+	}
+}
+
+// NOTE: Using a colormap is slower because it must
+// draw only one byte at a time, not two.
+void DrawJagobjLumpWithColormap(int lumpnum, int x, int y, int* ow, int* oh, int colormap)
+{
+	int16_t *dc_colormap = (int16_t*)dc_colormaps + colormap;
+	LZSTATE gfx_lz;
+	uint8_t lz_buf[LZ_BUF_SIZE];
+	byte* lump;
+	jagobj_t* jo;
+	int width, height;
+
+	if (lumpnum < 0 || y < 0) // Drawing above the top of the screen is not supported.
+		return;
+
+	lump = W_POINTLUMPNUM(lumpnum);
+	if (!(lumpinfo[lumpnum].name[0] & 0x80))
+	{
+		// uncompressed
+		jo = (jagobj_t*)lump;
+		if (ow) *ow = BIGSHORT(jo->width);
+		if (oh) *oh = BIGSHORT(jo->height);
+		DrawJagobjWithColormap((void*)lump, x, y, 0, 0, 0, 0, I_OverwriteBuffer(), colormap);
+		return;
+	}
+
+	LzSetup(&gfx_lz, lump, lz_buf, LZ_BUF_SIZE);
+	if (LzReadPartial(&gfx_lz, 16) != 16)
+		return;
+
+	jo = (jagobj_t*)gfx_lz.output;
+	width = BIGSHORT(jo->width);
+	height = BIGSHORT(jo->height);
+
+	if (ow) *ow = width;
+	if (oh) *oh = height;
+
+	if (x + width > 320)
+		width = 320 - x;
+	if (y + height > mars_framebuffer_height)
+		height = mars_framebuffer_height - y;
+
+	if (width < 1 || height < 1)
+		return;
+	{
+		byte* dest;
+		byte* source;
+		byte* fb;
+		unsigned p;
+
+		source = gfx_lz.output;
+		p = 16;
+
+		fb = (byte*)I_FrameBuffer();
+
+		dest = fb + y * 320 + x;
+		for (; height; height--)
+		{
+			int i;
+
+			LzReadPartial(&gfx_lz, width);
+
+			i = 0;
+			if (p + width > LZ_BUF_SIZE) {
+				int rem = LZ_BUF_SIZE - p;
+				for (; i < rem; i++)
+					dest[i] = dc_colormap[source[p++]];
+				p = 0;
+			}
+
+			for (; i < width; i++)
+				dest[i] = dc_colormap[source[p++]];
+
+			dest += 320;
+		}
+	}
+}
+
+/*
+Draw the text banner on the left side of the screen. Used for the title card.
+*/
+void DrawScrollingBanner(short ltzz_lump, int x_pos, int y_shift)
+{
+	const jagobj_t *jo = (jagobj_t*)W_POINTLUMPNUM(ltzz_lump);
+	pixel_t *fb = I_OverwriteBuffer();
+	pixel_t *dest = fb + ((320*22) / 2);	// Don't draw over the top letterbox.
+	const pixel_t *source;
+	const short height = jo->height;
+
+	x_pos &= ~0x01;	// No odd positions allowed!
+	short source_offset;
+	if (y_shift >= 0) {
+		source_offset = ((height - (y_shift % height)) << 4) - x_pos;
+	}
+	else {
+		source_offset = ((-y_shift % height) << 4) - x_pos;
+	}
+
+	if (viewportNum == VIEWPORT_H32) {
+		source_offset += (VIEWPORT_OVERDRAW_AREA >> 1);
+		dest += ((VIEWPORT_OVERDRAW_AREA >> 1) >> 1);
+		x_pos -= (VIEWPORT_OVERDRAW_AREA >> 1);
+	}
+
+	for (int dest_row=0; dest_row < 224-44; dest_row++)
+	{
+		source_offset += 16;
+		source_offset %= (height*16);
+
+		source = (pixel_t *)(jo->data + source_offset);
+
+		switch(x_pos) {
+			case 0:
+				*dest++ = *source++;
+			case -2:
+				*dest++ = *source++;
+			case -4:
+				*dest++ = *source++;
+			case -6:
+				*dest++ = *source++;
+			case -8:
+				*dest++ = *source++;
+			case -10:
+				*dest++ = *source++;
+			case -12:
+				*dest++ = *source++;
+			case -14:
+				*dest = *source;
+		}
+
+		dest += (320 - 16 - x_pos + 2) / 2;
+	}
+}
+
+/*
+Draw the chevrons on the left side of the screen. Used for the title card.
+*/
+void DrawScrollingChevrons(short chev_lump, int x_pos, int y_shift)
+{
+	const jagobj_t *jo = (jagobj_t*)W_POINTLUMPNUM(chev_lump);
+	pixel_t *fb = I_OverwriteBuffer();
+	pixel_t *dest = fb + ((320*22) / 2);	// Don't draw over the top letterbox.
+	const pixel_t *source;
+	const short height = 32;
+
+	x_pos &= ~0x01;	// No odd positions allowed!
+	short source_offset;
+	if (y_shift >= 0) {
+		source_offset = ((height - (y_shift % height)) * 26);
+	}
+	else {
+		source_offset = ((-y_shift % height) * 26);
+	}
+
+	if (x_pos <= 0) {
+		source_offset -= x_pos;
+
+		if (viewportNum == VIEWPORT_H32) {
+			source_offset += (VIEWPORT_OVERDRAW_AREA >> 1);
+			dest += ((VIEWPORT_OVERDRAW_AREA >> 1) >> 1);
+			x_pos -= (VIEWPORT_OVERDRAW_AREA >> 1);
+		}
+	}
+	else if (x_pos > 0) {
+		dest += (x_pos >> 1);
+		x_pos = 0;
+	}
+
+	for (int dest_row=0; dest_row < 224-44; dest_row++)
+	{
+		source = (pixel_t *)(jo->data + source_offset);
+
+		switch(x_pos) {
+			case 0:
+				*dest++ = *source++;
+			case -2:
+				*dest++ = *source++;
+			case -4:
+				*dest++ = *source++;
+			case -6:
+				*dest++ = *source++;
+			case -8:
+				*dest++ = *source++;
+			case -10:
+				*dest++ = *source++;
+			case -12:
+				*dest++ = *source++;
+			case -14:
+				*dest++ = *source++;
+			case -16:
+				*dest++ = *source++;
+			case -18:
+				*dest++ = *source++;
+			case -20:
+				*dest++ = *source++;
+			case -22:
+				*dest++ = *source++;
+			case -24:
+				*dest = *source;
+		}
+
+		dest += (320 - 26 - x_pos + 2) / 2;
+
+		source_offset += 26;
+		source_offset %= (height*26);
+	}
+}
+
+/*
+=============
+=
+= DrawTiledLetterbox
+=
+=============
+*/
+void DrawTiledLetterbox2(int flat)
+{
+	if (debugmode == DEBUGMODE_NODRAW)
+		return;
+	if (flat <= 0)
+		return;
+
+	int			yt;
+	const int	w = CalcFlatSize(W_LumpLength(flat)), top_h = 21, bottom_h = 21-10;
+	const int	hw = w / 2;
+	const int xtiles = (320 + w - 1) / w;
+	pixel_t* bdest;
+	const pixel_t* bsrc;
+
+	// Draw the top letterbox.
+	bsrc = (const pixel_t*)W_POINTLUMPNUM(flat);
+	bdest = I_FrameBuffer();
+	const pixel_t* source = bsrc + ((32-21)*hw);
+	const short two_black_pixels = (COLOR_BLACK<<8)|COLOR_BLACK;
+
+	for (yt = 0; yt < top_h; yt++)
+	{
+		for (int xt = 0; xt < xtiles; xt++)
+		{
+			for (int x = 0; x < hw; x++)
+				*bdest++ = source[x];
+		}
+
+		source += hw;
+	}
+	
+	for (int xt = 0; xt < 320/2; xt++)
+		*bdest++ = two_black_pixels;
+
+
+	// Draw the bottom letterbox.
+	bdest += ((320*180)/2);
+	source = bsrc;
+
+	for (yt = 0; yt < bottom_h; yt++)
+	{
+		for (int xt = 0; xt < xtiles; xt++)
+		{
+			for (int x = 0; x < hw; x++)
+				*bdest++ = source[x];
+		}
+
+		source += hw;
+	}
+}
+
+void DrawTiledLetterbox(void)
+{
+	I_ClearFrameBuffer();	// Needed for PAL and for stages without border flats.
+
+	if (gamemapinfo.borderFlat > 0) {
+		DrawTiledLetterbox2(gamemapinfo.borderFlat);
+	}
+}
+
+void ClearViewportOverdraw(void)
+{
+	pixel_t *framebuffer = I_OverwriteBuffer();
+
+	// For levels, the last 11 lines are free memory; don't overwrite!
+	const int lines_used = IsLevel() ? 224-11 : 224;
+
+#if (VIEWPORT_OVERDRAW_AREA & 0xF) == 0
+	const int overdraw_width = VIEWPORT_OVERDRAW_AREA >> 4;
+	for (int y=0; y < lines_used; y++) {
+		for (int x=0; x < overdraw_width; x++) {
+			*framebuffer++ = 0x1F1F;
+			*framebuffer++ = 0x1F1F;
+			*framebuffer++ = 0x1F1F;
+			*framebuffer++ = 0x1F1F;
+		}
+
+		framebuffer += ((SCREENWIDTH >> 1) - (((VIEWPORT_OVERDRAW_AREA + 2) >> 1) & 0x1FE));
+
+		for (int x=0; x < overdraw_width; x++) {
+			*framebuffer++ = 0x1F1F;
+			*framebuffer++ = 0x1F1F;
+			*framebuffer++ = 0x1F1F;
+			*framebuffer++ = 0x1F1F;
+		}
+	}
+#elif (VIEWPORT_OVERDRAW_AREA & 0x7) == 0
+	const int overdraw_width = VIEWPORT_OVERDRAW_AREA >> 3;
+	for (int y=0; y < lines_used; y++) {
+		for (int x=0; x < overdraw_width; x++) {
+			*framebuffer++ = 0x1F1F;
+			*framebuffer++ = 0x1F1F;
+		}
+
+		framebuffer += ((SCREENWIDTH >> 1) - (((VIEWPORT_OVERDRAW_AREA + 2) >> 1) & 0x1FE));
+
+		for (int x=0; x < overdraw_width; x++) {
+			*framebuffer++ = 0x1F1F;
+			*framebuffer++ = 0x1F1F;
+		}
+	}
+#endif
+}
+
+/*
+=============
+=
+= DrawTiledBackground
+=
+=============
+*/
+void DrawTiledBackground2(int flat)
+{
+	int			y, yt;
+	const int	w = CalcFlatSize(flat);
+	const int 	h = CalcFlatSize(flat);
+	const int	hw = w / 2;
+	const int xtiles = (320 + w - 1) / w;
+	const int ytiles = (224 + h - 1) / h;
+	pixel_t* bdest;
+	const pixel_t* bsrc;
+
+	if (debugmode == DEBUGMODE_NODRAW)
+		return;
+	if (flat <= 0)
+		return;
+
+	bsrc = (const pixel_t*)W_POINTLUMPNUM(flat);
+	bdest = I_FrameBuffer();
+
+	y = 0;
+	for (yt = 0; yt < ytiles; yt++)
+	{
+		int y1;
+		const pixel_t* source = bsrc;
+
+		for (y1 = 0; y1 < w; y1++)
+		{
+			int xt;
+
+			for (xt = 0; xt < xtiles; xt++) {
+				int x;
+				for (x = 0; x < hw; x++)
+					*bdest++ = source[x];
+			}
+
+			y++;
+			source += hw;
+			if (y == mars_framebuffer_height)
+				return;
+		}
+	}
+}
+
+void DrawTiledBackground(void)
+{
+	if (gameinfo.borderFlat <= 0)
+	{
+		I_ClearFrameBuffer();
+		return;
+	}
+	DrawTiledBackground2(gameinfo.borderFlat);
+}
+
+void EraseBlock(int x, int y, int width, int height)
+{
+}
+
+void DrawScaledJagobj(jagobj_t* jo, int x, int y, 
+	fixed_t ratio_w, fixed_t ratio_h, pixel_t *fb)
+{
+	int		srcx, srcy;
+	int		width, height;//, flags, index;
+	fixed_t	total_scaled_w, total_scaled_h;
+	int		rowsize;
+	fixed_t	inc_x, inc_y;
+	uint8_t	*dest, *source;
+
+	rowsize = BIGSHORT(jo->width);
+	width = BIGSHORT(jo->width);
+	height = BIGSHORT(jo->height);
+//	flags = BIGSHORT(jo->flags);
+//	index = BIGSHORT(jo->index);
+
+	/*
+	if (src_w > 0)
+		width = src_w;
+	else if (src_w < 0)
+		width += src_w;
+
+	if (src_h > 0)
+		height = src_h;
+	else if (src_h < 0)
+		height += src_h;
+	*/
+
+	srcx = 0;
+	srcy = 0;
+
+	if (x < 0)
+	{
+		width += x;
+		srcx = -x;
+		x = 0;
+	}
+	//srcx += src_x;
+
+	if (y < 0)
+	{
+		srcy = -y;
+		height += y;
+		y = 0;
+	}
+	//srcy += src_y;
+
+	if (x + width > 320)
+		width = 320 - x;
+	if (y + height > mars_framebuffer_height)
+		height = mars_framebuffer_height - y;
+
+	if (width < 1 || height < 1)
+		return;
+
+	total_scaled_w = FixedMul((width << 16), ratio_w) >> 17;
+	total_scaled_h = FixedMul((height << 16), ratio_h) >> 16;
+
+	ratio_w = FixedDiv(FRACUNIT, ratio_w);
+	ratio_h = FixedDiv(FRACUNIT, ratio_h);
+
+	inc_x = 0;
+	inc_y = 0;
+
+	dest = (byte*)fb + y * 320 + x;
+	source = jo->data + srcx + srcy * rowsize;
+
+	//if ((x & 1) == 0 && (width & 1) == 0 && (rowsize & 1) == 0)
+	{
+		pixel_t* dest2 = (pixel_t*)dest;
+
+		uint8_t* source2 = source;
+		uint8_t* source3 = source;
+
+		for (; total_scaled_h; total_scaled_h--)
+		{
+			for (int n = total_scaled_w; n > 0; n--)
+			{
+				pixel_t word = (*source2) << 8;
+
+				inc_x += ratio_w;
+				source2 += (inc_x >> 16);
+				inc_x &= 0xFFFF;
+
+				word |= (*source2);
+				*dest2++ = word;
+
+				inc_x += ratio_w;
+				source2 += (inc_x >> 16);
+				inc_x &= 0xFFFF;
+			}
+
+			dest2 += (160 - total_scaled_w);
+
+			inc_y += ratio_h;
+			source3 += (width * (inc_y >> 16));
+			source2 = source3;
+			inc_y &= 0xFFFF;
+
+			inc_x = 0;
+		}
+
+		return;
+	}
+}
+
+void DrawJagobj3(jagobj_t* jo, int x, int y, 
+	int src_x, int src_y, int src_w, int src_h,
+	const int canvas_width, pixel_t *fb)
+{
+	int		srcx, srcy;
+	int		width, height, depth, flags, index, hw;
+	int		rowsize, inc;
+	byte	*dest, *source;
+
+	rowsize = BIGSHORT(jo->width);
+	width = BIGSHORT(jo->width);
+	height = BIGSHORT(jo->height);
+	depth = BIGSHORT(jo->depth);
+	flags = BIGSHORT(jo->flags);
+	index = BIGSHORT(jo->index);
+
+	if (src_w > 0)
+		width = src_w;
+	else if (src_w < 0)
+		width += src_w;
+
+	if (src_h > 0)
+		height = src_h;
+	else if (src_h < 0)
+		height += src_h;
+
+	srcx = 0;
+	srcy = 0;
+
+	if (x < 0)
+	{
+		width += x;
+		srcx = -x;
+		x = 0;
+	}
+	srcx += src_x;
+
+	if (y < 0)
+	{
+		srcy = -y;
+		height += y;
+		y = 0;
+	}
+	srcy += src_y;
+
+	if (x + width > canvas_width)
+		width = canvas_width - x;
+	if (y + height > mars_framebuffer_height)
+		height = mars_framebuffer_height - y;
+	inc = rowsize - width;
+
+	if (width < 1 || height < 1)
+		return;
+
+	hw = width >> 1;
+
+	if (depth == 2)
+	{
+		inc >>= 1;
+		srcx >>= 1;
+		rowsize >>= 1;
+		index = (index << 1) + (flags & 2 ? 1 : 0);
+	}
+
+	dest = (byte*)fb + y * canvas_width + x;
+	source = jo->data + srcx + srcy * rowsize;
+
+	if (depth == 2)
+	{
+		if (((intptr_t)dest & 1) == 0 && hw >= 1)
+		{
+			pixel_t* dest2 = (pixel_t *)dest, *source2 = (pixel_t*)source;
+			index = ((unsigned)index << 8) | index;
+			int canvas_inc = (canvas_width >> 1) - hw;
+
+			inc >>= 1;
+			for (; height; height--)
+			{
+				int n = (hw + 3) >> 2;
+				switch (hw & 3)
+				{
+				case 0: do { *dest2++ = index + (((((*source2 >> 12)      ) << 8) | ((*source2 >> 8) & 0xF)) << 1);
+				case 3:      *dest2++ = index + (((((*source2 >>  4) & 0xF) << 8) | ((*source2 >> 0) & 0xF)) << 1), source2++;
+				case 2:      *dest2++ = index + (((((*source2 >> 12)      ) << 8) | ((*source2 >> 8) & 0xF)) << 1);
+				case 1:      *dest2++ = index + (((((*source2 >>  4) & 0xF) << 8) | ((*source2 >> 0) & 0xF)) << 1), source2++;
+				} while (--n > 0);
+				}
+				source2 += inc;
+				dest2 += canvas_inc;
+			}
+
+			return;
+		}
+
+		for (; height; height--)
+		{
+			int n = (width + 3) >> 2;
+			switch (width & 3)
+			{
+			case 0: do { *dest++ = index + (((*source >> 4) & 0xF) << 1);
+			case 3:      *dest++ = index + (((*source >> 0) & 0xF) << 1), source++;
+			case 2:      *dest++ = index + (((*source >> 4) & 0xF) << 1);
+			case 1:      *dest++ = index + (((*source >> 0) & 0xF) << 1), source++;
+			} while (--n > 0);
+			}
+			source += inc;
+			dest += canvas_width - width;
+		}
+		return;
+	}
+
+	if ((x & 1) == 0 && (width & 1) == 0 && (rowsize & 1) == 0)
+	{
+		pixel_t* dest2 = (pixel_t*)dest, * source2 = (pixel_t*)source;
+		int canvas_inc = (canvas_width >> 1) - hw;
+
+		inc >>= 1;
+		for (; height; height--)
+		{
+			int n = (hw + 3) >> 2;
+			switch (hw & 3)
+			{
+			case 0: do { *dest2++ = *source2++;
+			case 3:      *dest2++ = *source2++;
+			case 2:      *dest2++ = *source2++;
+			case 1:      *dest2++ = *source2++;
+			} while (--n > 0);
+			}
+			source2 += inc;
+			dest2 += canvas_inc;
+		}
+
+		return;
+	}
+
+	for (; height; height--)
+	{
+		int n = (width + 3) >> 2;
+		switch (width & 3)
+		{
+		case 0: do { *dest++ = *source++;
+		case 3:      *dest++ = *source++;
+		case 2:      *dest++ = *source++;
+		case 1:      *dest++ = *source++;
+		} while (--n > 0);
+		}
+		source += rowsize - width;
+		dest += canvas_width - width;
+	}
+}
+
+void DrawJagobj(jagobj_t* jo, int x, int y)
+{
+	DrawJagobj3(jo, x, y, 0, 0, 0, 0, 320, I_OverwriteBuffer());
+}
+
+void DrawJagobj2(jagobj_t* jo, int x, int y, int canvas_width)
+{
+	DrawJagobj3(jo, x, y, 0, 0, 0, 0, canvas_width, I_OverwriteBuffer());
+}
+
+void DrawFillRect(int x, int y, int w, int h, int c)
+{
+	// Note: This function does not correctly handle odd widths.
+
+	int i;
+
+	if (x + w > 320)
+		w = 320 - x;
+	if (y + h > mars_framebuffer_height)
+		h = mars_framebuffer_height - y;
+
+	c = (c << 8) | c;
+	int hw = w >> 1;
+
+	pixel_t* dest = I_FrameBuffer() + y * 160 + (x>>1);
+	for (i = 0; i < h; i++)
+	{
+		int n = (hw + 3) >> 2;
+		pixel_t* dest2 = dest;
+
+		switch (hw & 3)
+		{
+		case 0: do { *dest2++ = c;
+		case 3:      *dest2++ = c;
+		case 2:      *dest2++ = c;
+		case 1:      *dest2++ = c;
+		} while (--n > 0);
+		}
+
+		dest += 160;
+	}
+}
+
+void DrawLine(int x, int y, int length, int c, boolean vertical)
+{
+	// Note: If drawing horizontal lines, this function does not correctly handle odd widths.
+
+	if (vertical) {
+		if (y + length > mars_framebuffer_height) {
+			length = mars_framebuffer_height - y;
+		}
+
+		if (!(x & 1)) {
+			// Offset is even.
+			c <<= 8;
+		}
+
+		pixel_t* dest = I_OverwriteBuffer() + y * 160 + (x>>1);
+		for (int i = 0; i < length; i++) {
+			*dest = c;
+			dest += 160;
+		}
+	}
+	else { // horizontal
+		if (x + length > 320) {
+			length = 320 - x;
+		}
+
+		int hw = length >> 1;
+
+		c = (c << 8) | c;
+
+		pixel_t* dest = I_FrameBuffer() + y * 160 + (x>>1);
+
+		int n = (hw + 3) >> 2;
+
+		switch (hw & 3)
+		{
+			case 0: do { *dest++ = c;
+			case 3:      *dest++ = c;
+			case 2:      *dest++ = c;
+			case 1:      *dest++ = c;
+			} while (--n > 0);
+		}
+	}
+}
+
+const int8_t water_filter[128] =
+{
+	 0,  0,  0,  0,  0,  1,  1,  1,  1,  1,  2,  2,  2,  2,  2,  2,
+	 2,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,
+	 3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  2,  2,
+	 2,  2,  2,  2,  2,  1,  1,  1,  1,  1,  0,  0,  0,  0,  0,  0,
+	-1, -1, -1, -1, -1, -2, -2, -2, -2, -2, -3, -3, -3, -3, -3, -3,
+	-3, -4, -4, -4, -4, -4, -4, -4, -4, -4, -4, -4, -4, -4, -4, -4,
+	-4, -4, -4, -4, -4, -4, -4, -4, -4, -4, -4, -4, -4, -4, -3, -3,
+	-3, -3, -3, -3, -3, -2, -2, -2, -2, -2, -1, -1, -1, -1, -1, -1,
+};
+
+void ApplyHorizontalDistortionFilter(int filter_offset)
+{
+	uint16_t *lines = Mars_FrameBufferLines();
+	short pixel_offset = (512/2) + ((~h40_sky)&1);
+
+	for (int i=0; i < 7; i++) {
+		distortion_line_bit_shift[i] = 0;
+	}
+
+	for (int i=0; i < 202; i++) {
+		signed char shift_value;
+
+		distortion_line_bit_shift[i>>5] <<= 1;
+
+		if (i >= 22 && i < 224-22) {
+			// Only shift lines within the viewport.
+			shift_value = water_filter[(filter_offset + i) & 127];
+			distortion_line_bit_shift[i>>5] |= (water_filter[(filter_offset + i - 3) & 127] & 1);
+			//DLG: Why doesn't 'shift_value' work correctly with HINT pixel shifts?
+		}
+		else {
+			// Letter box area should be left alone.
+			shift_value = 0;
+		}
+
+		lines[i] = pixel_offset + (shift_value >> 1);
+
+		pixel_offset += (320/2);
+	}
+
+	// Reuse the black pixels from the top of the screen for the next line.
+	lines[202] = lines[21];
+
+	// The next eleven lines are unique.
+	pixel_offset = (((320*202)+512)/2) + ((~h40_sky)&1);
+	for (int i=203; i < 214; i++) {
+		lines[i] = pixel_offset;
+		pixel_offset += (320/2);
+	}
+
+	// The remaining lines reuse pixels from the top border.
+	for (int i=214; i < 224; i++) {
+		lines[i] = lines[i-214];
+	}
+
+	effects_flags |= EFFECTS_DISTORTION_ENABLED;
+}
+
+void RemoveDistortionFilters()
+{
+	effects_flags &= (~EFFECTS_DISTORTION_ENABLED);
+
+	uint16_t *lines = Mars_FrameBufferLines();
+	short pixel_offset = (512/2) + ((~h40_sky)&1);
+
+	if (IsLevel()) {
+		// Set line offsets for the entire viewport (180 pixels) and top border (22 pixels)
+		for (int i=0; i < 202; i++) {
+			lines[i] = pixel_offset;
+			pixel_offset += (320/2);
+		}
+
+		// Reuse the black pixels from the top of the screen for the next line.
+		lines[202] = lines[21];
+		
+		// The next eleven lines are unique.
+		for (int i=203; i < 214; i++) {
+			lines[i] = pixel_offset;
+			pixel_offset += (320/2);
+		}
+
+		// The remaining lines reuse pixels from the top border.
+		for (int i=214; i < 224; i++) {
+			lines[i] = lines[i-214];
+		}
+	}
+	else {
+		for (int i=0; i < 224; i++) {
+			lines[i] = pixel_offset;
+			pixel_offset += (320/2);
+		}
+	}
+
+	MARS_VDP_SCRSHFT = ((~h40_sky)&1);
+}

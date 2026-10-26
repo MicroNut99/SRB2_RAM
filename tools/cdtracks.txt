@@ -1,0 +1,21 @@
+# SRB2 RAM - the disc's CD audio: which of the game's songs (its VGM lumps) play from the CD, and
+# which track of the Sonic Robo Blast 2 Official Soundtrack (v2.1, files "NNN - Title.mp3") each one
+# is. Disc tracks are numbered in this order from 2 (track 1 is the data). Songs not listed keep
+# their FM version (VGM). tools/make_cdtracks.py reads this.
+#
+# lump       OST   what it is in SRB32X
+VGM_GFZ1     101   # Greenflower Zone Act 1 (MAP01, MAP03 after the boss)
+VGM_GFZ2     102   # Greenflower Zone Act 2 (MAP02)
+VGM_THZ1     103   # Techno Hill Zone Act 1 (MAP04, MAP06 after the boss)
+VGM_THZ2     104   # Techno Hill Zone Act 2 (MAP05)
+VGM_CEZ1     107   # Castle Eggman Zone Act 1 (MAP10)
+VGM_BOSS     115   # Boss Theme (MAP03, MAP06)
+VGM_NTRO     134   # Title Screen (the title and its map)
+VGM_SS       117   # Special Stage (MAP60-65; the OST's first: Floral Field)
+VGM_INVC     127   # Invincibility
+VGM_SHOE     128   # Super Sneakers
+VGM_ACLR     131   # Act Clear
+VGM_OVER     137   # Game Over
+VGM_CRED     138   # Credits (victory)
+# kept on FM: VGM_1UP (Extra Life) and VGM_DRWN (Drowning) - short jingles timed to the game,
+# a CD seek would make them late; VGM_CHAO (an emerald) - the OST has no such jingle
