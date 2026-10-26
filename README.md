@@ -107,7 +107,7 @@ All settings are environment variables, all optional:
 
 | Setting | Default | What it does |
 |---|---|---|
-| `NAME=<name>` | `SRB2_RAM_R1` | The disc's and the launcher's name. Give every build you test its own. |
+| `NAME=<name>` | `SRB2_RAM_R2` | The disc's and the launcher's name. Give every build you test its own. |
 | `OST=<folder>` | `data/ost` | The soundtrack's folder. If it is missing, there is no CD audio. |
 | `SPLASH_TEXT="..."` | `LOADING SONIC ROBO BLAST 2 INTO THE RAM CART` | The line under the loading bar. |
 | `GENDEV=<folder>` | `/opt/d32xr-dk/opt/toolchains/sega`, else `/opt/toolchains/sega` | The D32XR devkit. |
