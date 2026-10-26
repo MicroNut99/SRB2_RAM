@@ -111,7 +111,7 @@ All settings are environment variables, all optional:
 | `OST=<folder>` | `data/ost` | The soundtrack's folder. If it is missing, there is no CD audio. |
 | `SPLASH_TEXT="..."` | `LOADING SONIC ROBO BLAST 2 INTO THE RAM CART` | The line under the loading bar. |
 | `GENDEV=<folder>` | `/opt/d32xr-dk/opt/toolchains/sega`, else `/opt/toolchains/sega` | The D32XR devkit. |
-| `BOOTCAMP=<folder>` | `../CD32X-BootCamp` | The CD32X BootCamp, for the launcher. |
+| `BOOTCAMP=<folder>` | `../CD32X-BootCamp`, else `../../CD32X-BootCamp` | The CD32X BootCamp, for the launcher. |
 | `EDCD=0` | `1` | The disc only, no launcher. |
 
 What `build.sh` does, in order:

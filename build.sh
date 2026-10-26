@@ -105,6 +105,7 @@ printf "    discs/%s/%s.cue: %d sectors = %d:%02d\n" "$NAME" "$NAME" $SECTORS $(
 # (the game's saves) on the SD card
 if [ "${EDCD:-1}" = 1 ]; then
   BC="${BOOTCAMP:-$HERE/../CD32X-BootCamp}"
+  [ -n "$BOOTCAMP" ] || [ -f "$BC/edboot/build_edcd.sh" ] || BC="$HERE/../../CD32X-BootCamp"   # or two folders up
   [ -f "$BC/edboot/build_edcd.sh" ] || { echo "*** the launcher needs the CD32X BootCamp next to this folder (or BOOTCAMP=<folder>): not at $BC"; exit 1; }
   echo "==> the launcher EDCD_$NAME.32X (started from the EverDrive menu with the disc in the Sega CD)"
   T="$B/edcd"; rm -rf "$T"; mkdir -p "$T/subcpu/ROMS" "$T/sh2"
